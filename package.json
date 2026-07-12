@@ -1,0 +1,25 @@
+{
+  "name": "voice-calendar-assistant",
+  "version": "1.0.0",
+  "description": "General-purpose AI Voice Assistant bridging Gemini Live and MCP",
+  "main": "server/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server/server.js",
+    "server": "node server/server.js",
+    "client": "npm run --prefix client dev",
+    "install:all": "npm install && npm install --prefix client",
+    "test": "node server/test-connection.js",
+    "dev": "concurrently \"npm run server\" \"npm run client\""
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.1",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "pg": "^8.11.5",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

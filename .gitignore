@@ -1,0 +1,26 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment and Credentials (CRITICAL SECURITY)
+.env
+*.key
+*.cert
+*.pem
+server/data/preferences_*.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Frontend build directories
+client/dist/
+client/node_modules/
+
+# Mobile app build and cache directories
+client-mobile/node_modules/
+client-mobile/.expo/
+client-mobile/web-build/
+client-mobile/dist/
