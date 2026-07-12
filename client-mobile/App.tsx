@@ -6,18 +6,23 @@ import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
 
 // Default production URL fallback (replace this when deploying to DigitalOcean)
-const PRODUCTION_URL = 'https://voice-calendar-assistant.digitalocean.app'; 
+const PRODUCTION_URL = 'https://urchin-app-s2xuq.ondigitalocean.app'; 
 const DEV_TUNNEL_URL = 'https://192.168.1.133:3000'; // Direct Local Secure HTTPS Server
 
 export default function App() {
   const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
   const [webUrl, setWebUrl] = useState<string>('');
 
-  // 1. Resolve Backend Server IP Address dynamically for local testing
+  // 1. Resolve Backend Server IP Address dynamically
   useEffect(() => {
-    // Route traffic through the HTTPS tunnel to enable secure context for Web Audio mic capture
-    console.log(`[Expo Go] Routing mobile client to secure tunnel: ${DEV_TUNNEL_URL}`);
-    setWebUrl(DEV_TUNNEL_URL);
+    // Check if we are running in local development mode or production mode
+    if (__DEV__) {
+      console.log(`[Expo Go] Development mode active. Target local HTTPS: ${DEV_TUNNEL_URL}`);
+      setWebUrl(DEV_TUNNEL_URL);
+    } else {
+      console.log(`[Production] Target cloud platform: ${PRODUCTION_URL}`);
+      setWebUrl(PRODUCTION_URL);
+    }
   }, []);
 
   // 2. Pre-authorize Microphone permissions at the iOS system shell level
