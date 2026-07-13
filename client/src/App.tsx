@@ -136,6 +136,18 @@ export default function App() {
       const height = canvas.height;
       const centerY = height / 2;
 
+      if (!isMicActive) {
+        // Draw a single thin static horizontal line when the microphone is deactivated
+        ctx.beginPath();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = "rgba(210, 206, 194, 0.4)"; // Soft warm shoji gray
+        ctx.moveTo(0, centerY);
+        ctx.lineTo(width, centerY);
+        ctx.stroke();
+        animationId = requestAnimationFrame(render);
+        return;
+      }
+
       phase += 0.05;
 
       const numWaves = 4;
@@ -186,7 +198,7 @@ export default function App() {
       cancelAnimationFrame(animationId);
       window.removeEventListener("resize", handleResize);
     };
-  }, [isModelSpeaking, isUserSpeaking]);
+  }, [isModelSpeaking, isUserSpeaking, isMicActive]);
 
   const addLog = (sender: "user" | "model" | "system", text: string) => {
     setLogs((prev) => [
