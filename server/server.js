@@ -8,6 +8,7 @@ import dotenv from "dotenv";
 import mcpManager from "./mcp-manager.js";
 import { handleLiveSession } from "./gemini-live-bridge.js";
 import authRouter from "./routes/auth.js";
+import db from "./utils/db.js";
 
 // Load environment variables from .env
 dotenv.config();
