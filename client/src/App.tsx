@@ -687,6 +687,19 @@ export default function App() {
     }
   };
 
+  const handleCopyLogs = () => {
+    const text = logs
+      .map((log) => `[${log.timestamp.toLocaleTimeString()}] [${log.sender.toUpperCase()}]: ${log.text}`)
+      .join("\n");
+    navigator.clipboard.writeText(text)
+      .then(() => {
+        addLog("system", "Developer logs successfully copied to clipboard.");
+      })
+      .catch((err) => {
+        console.error("Failed to copy logs:", err);
+      });
+  };
+
   return (
     <div className="dashboard">
       
@@ -951,9 +964,28 @@ export default function App() {
       {/* 3. Right Panel: Collapsible Monospace Developer Console Logs */}
       {showConsole && (
         <div className="panel sidebar developer-sidebar">
-          <div className="panel-header">
+          <div className="panel-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span>🖥️ Dev Console Logs</span>
-            <button className="close-console-btn" onClick={() => setShowConsole(false)}>×</button>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+              <button 
+                onClick={handleCopyLogs}
+                style={{
+                  background: "transparent",
+                  border: "1px solid var(--panel-border)",
+                  borderRadius: "4px",
+                  fontSize: "11px",
+                  padding: "2px 6px",
+                  cursor: "pointer",
+                  color: "var(--text-secondary)",
+                  display: "inline-flex",
+                  alignItems: "center"
+                }}
+                title="Copy logs to clipboard"
+              >
+                📋 Copy
+              </button>
+              <button className="close-console-btn" onClick={() => setShowConsole(false)} style={{ border: "none", background: "transparent", fontSize: "18px", cursor: "pointer", padding: "0 4px" }}>×</button>
+            </div>
           </div>
           <div className="panel-content monospace-console">
             <div className="raw-logs-container">
