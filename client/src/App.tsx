@@ -62,6 +62,7 @@ export default function App() {
   const [showMenu, setShowMenu] = useState(false);
   const [isMicActive, setIsMicActive] = useState(false);
   const [mutePlayback, setMutePlayback] = useState(false);
+  const [isGoogleLinked, setIsGoogleLinked] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioManagerRef = useRef<AudioManager | null>(null);
@@ -103,9 +104,20 @@ export default function App() {
     consoleEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [logs]);
 
-  // Initial fetch of preferences
+  const fetchAuthStatus = async () => {
+    try {
+      const res = await fetch("/api/auth/status");
+      const data = await res.json();
+      setIsGoogleLinked(!!data.linked);
+    } catch (err) {
+      console.error("Failed to fetch Google auth status:", err);
+    }
+  };
+
+  // Initial fetch of preferences and auth status
   useEffect(() => {
     fetchPreferences();
+    fetchAuthStatus();
   }, []);
 
   // Set up visualizer canvas animation
@@ -635,6 +647,45 @@ export default function App() {
     }
   };
 
+  const handleUnlink = async () => {
+    setShowMenu(false);
+    addLog("system", "Unlinking Google Calendar account...");
+    try {
+      const res = await fetch("/api/auth/unlink", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setIsGoogleLinked(false);
+        addLog("system", "Google account successfully unlinked.");
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Math.random().toString(36).substr(2, 9),
+            sender: "system",
+            text: "🔑 Google Calendar account unlinked successfully.",
+            timestamp: new Date()
+          }
+        ]);
+      } else {
+        throw new Error(data.error || "Failed to unlink");
+      }
+    } catch (err: any) {
+      console.error("Failed to unlink Google account:", err);
+      addLog("system", `Failed to unlink: ${err.message}`);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          sender: "system",
+          text: `⚠️ Failed to unlink Google account: ${err.message}`,
+          timestamp: new Date()
+        }
+      ]);
+    }
+  };
+
   return (
     <div className="dashboard">
       
@@ -699,14 +750,24 @@ export default function App() {
             
             {showMenu && (
               <div className="hamburger-dropdown">
-                <a 
-                  href="/api/auth/google" 
-                  className="dropdown-item"
-                  title="Link Google Calendar"
-                  onClick={() => setShowMenu(false)}
-                >
-                  🔑 Link Google
-                </a>
+                {isGoogleLinked ? (
+                  <button 
+                    className="dropdown-item"
+                    title="Unlink Google Calendar"
+                    onClick={handleUnlink}
+                  >
+                    🔑 Unlink Google
+                  </button>
+                ) : (
+                  <a 
+                    href="/api/auth/google" 
+                    className="dropdown-item"
+                    title="Link Google Calendar"
+                    onClick={() => setShowMenu(false)}
+                  >
+                    🔑 Link Google
+                  </a>
+                )}
                 <button 
                   className="dropdown-item"
                   onClick={() => {

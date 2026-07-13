@@ -4,6 +4,96 @@ import { encrypt } from "../utils/crypto.js";
 
 const router = express.Router();
 
+/**
+ * GET /api/auth/status
+ * Returns connection status
+ */
+router.get("/status", async (req, res) => {
+  try {
+    let email = req.query.email;
+    if (!email && req.headers.cookie) {
+      const cookies = Object.fromEntries(
+        req.headers.cookie.split(";").map(c => {
+          const parts = c.trim().split("=");
+          return [parts[0], decodeURIComponent(parts[1] || "")];
+        })
+      );
+      email = cookies["email"];
+    }
+
+    // Fallback: If no email context, load first user from database as dev mode fallback
+    if (!email) {
+      const usersList = await db.query("SELECT email FROM users LIMIT 1");
+      if (usersList.rows.length > 0) {
+        email = usersList.rows[0].email;
+      }
+    }
+
+    if (!email) {
+      return res.json({ linked: false });
+    }
+
+    const userRes = await db.query("SELECT id FROM users WHERE email = $1", [email]);
+    if (userRes.rows.length === 0) {
+      return res.json({ linked: false, email });
+    }
+
+    const userId = userRes.rows[0].id;
+    const credsRes = await db.query("SELECT id FROM google_credentials WHERE user_id = $1", [userId]);
+    const linked = credsRes.rows.length > 0;
+
+    res.json({ linked, email });
+  } catch (err) {
+    console.error("Error in /api/auth/status:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/auth/unlink
+ * Removes Google OAuth credentials
+ */
+router.post("/unlink", async (req, res) => {
+  try {
+    let email = req.body.email;
+    if (!email && req.headers.cookie) {
+      const cookies = Object.fromEntries(
+        req.headers.cookie.split(";").map(c => {
+          const parts = c.trim().split("=");
+          return [parts[0], decodeURIComponent(parts[1] || "")];
+        })
+      );
+      email = cookies["email"];
+    }
+
+    // Fallback: Use first user in dev mode
+    if (!email) {
+      const usersList = await db.query("SELECT email FROM users LIMIT 1");
+      if (usersList.rows.length > 0) {
+        email = usersList.rows[0].email;
+      }
+    }
+
+    if (!email) {
+      return res.status(400).json({ error: "User session context not found." });
+    }
+
+    const userRes = await db.query("SELECT id FROM users WHERE email = $1", [email]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: `User with email ${email} not found.` });
+    }
+
+    const userId = userRes.rows[0].id;
+    await db.query("DELETE FROM google_credentials WHERE user_id = $1", [userId]);
+    console.log(`[Authentication] Google credentials unlinked for user: ${email}`);
+
+    res.json({ success: true, message: "Credentials successfully removed." });
+  } catch (err) {
+    console.error("Error in /api/auth/unlink:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Helper to construct callback redirect URI
 const getRedirectUri = (req) => {
   const host = req.get("host");
