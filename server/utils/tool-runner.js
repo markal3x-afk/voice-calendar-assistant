@@ -73,6 +73,9 @@ export async function executeUserTool(name, args, googleClient, userId) {
     if (timeMin) params.timeMin = timeMin;
     if (timeMax) params.timeMax = timeMax;
     
+    const queryStr = args.q || args.query;
+    if (queryStr) params.q = queryStr;
+    
     // Check if we need to query across ALL active selected calendars concurrently
     if (calendarId === "primary") {
       console.log(`[Tool Runner] Querying all calendars in parallel for user_id: ${userId}`);
