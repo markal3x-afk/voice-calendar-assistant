@@ -54,7 +54,7 @@ export class AudioManager {
   // Voice Activity Detection (VAD) properties for echo/static suppression
   private silenceCounter = 0;
   private readonly HANGOVER_FRAMES = 25; // ~200ms at typical chunk rates (128-sample blocks)
-  private readonly MIN_VOLUME_THRESHOLD = 0.004; // RMS amplitude threshold for noise gate
+  private readonly MIN_VOLUME_THRESHOLD = 0.0015; // RMS amplitude threshold for noise gate (backed off for sensitivity)
 
   constructor(onAudioChunk: (base64Pcm: string) => void) {
     this.onAudioChunkCallback = onAudioChunk;

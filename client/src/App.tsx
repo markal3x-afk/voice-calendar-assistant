@@ -196,7 +196,7 @@ export default function App() {
     }
   };
 
-  const connect = async () => {
+  const connect = async (pendingText?: string) => {
     setIsConnecting(true);
     setStatusMessage("Connecting to Server...");
     addLog("system", "Starting Voice Session...");
@@ -247,6 +247,10 @@ export default function App() {
               timestamp: new Date()
             }
           ]);
+
+          if (pendingText) {
+            ws.send(JSON.stringify({ type: "text", text: pendingText }));
+          }
         } catch (err) {
           console.error("Microphone capture failed:", err);
           addLog("system", "Mic capture failed. Please check permissions.");
@@ -506,9 +510,12 @@ export default function App() {
   /**
    * Sends text input to Gemini
    */
-  const handleSendText = (e: React.FormEvent) => {
+  const handleSendText = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!textInput.trim() || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!textInput.trim()) return;
+
+    const textToSend = textInput;
+    setTextInput("");
 
     // Append user message bubble immediately
     setMessages((prev) => [
@@ -516,14 +523,19 @@ export default function App() {
       {
         id: Math.random().toString(36).substr(2, 9),
         sender: "user",
-        text: textInput,
+        text: textToSend,
         timestamp: new Date()
       }
     ]);
 
-    addLog("user", textInput);
-    wsRef.current.send(JSON.stringify({ type: "text", text: textInput }));
-    setTextInput("");
+    addLog("user", textToSend);
+
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: "text", text: textToSend }));
+    } else {
+      addLog("system", "Auto-connecting session to send message...");
+      await connect(textToSend);
+    }
   };
 
   return (
@@ -580,7 +592,7 @@ export default function App() {
         <div className="chat-header">
           <div>
             <h1 style={{ fontSize: "18px", fontWeight: 700, letterSpacing: "-0.5px" }}>
-              Gemini Live <span style={{ color: "var(--accent-cyan)" }}>Assistant</span>
+              Calendar <span style={{ color: "var(--accent-cyan)" }}>Live</span>
             </h1>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -720,15 +732,14 @@ export default function App() {
               <input
                 type="text"
                 className="unified-text-input"
-                placeholder={isConnected ? "Message Gemini Live..." : "Click mic to start session..."}
+                placeholder="Message Calendar Live..."
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
-                disabled={!isConnected}
               />
               <button 
                 type="submit" 
-                className={`unified-send-btn ${textInput.trim() && isConnected ? "active" : ""}`} 
-                disabled={!isConnected || !textInput.trim()}
+                className={`unified-send-btn ${textInput.trim() ? "active" : ""}`} 
+                disabled={!textInput.trim()}
               >
                 ➔
               </button>
