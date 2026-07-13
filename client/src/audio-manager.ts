@@ -131,13 +131,16 @@ export class AudioManager {
       }
     }
 
-    // 3. Drop silent frames to prevent static and echo from interrupting Gemini
-    if (this.silenceCounter === 0) {
-      return;
-    }
+    // 3. Override silent frames with absolute digital silence (all zeros)
+    // This blocks static noise and prevents false interruptions, while keeping 
+    // the stream continuous so we don't stall our 100ms buffering accumulator.
+    const processedData = new Float32Array(floatData.length);
+    if (this.silenceCounter > 0) {
+      processedData.set(floatData);
+    } // If silenceCounter is 0, processedData remains all zeros (perfect silence)
 
     // Resample to 16kHz 16-bit signed PCM
-    const pcm16 = this.resampler.resample(floatData);
+    const pcm16 = this.resampler.resample(processedData);
     if (pcm16.length === 0) return;
 
     // Accumulate samples in memory
