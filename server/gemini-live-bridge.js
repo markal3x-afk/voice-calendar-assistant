@@ -12,9 +12,26 @@ const GEMINI_LIVE_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.ge
 export async function handleLiveSession(clientWs, request) {
   console.log("Client connected. Parsing user email context...");
 
-  // 1. Resolve email parameter from connection query string
+  // 1. Resolve email parameter from connection query string or fallback to cookie header
   const urlObj = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   let email = urlObj.searchParams.get("email");
+
+  if (!email && request.headers.cookie) {
+    try {
+      const cookies = Object.fromEntries(
+        request.headers.cookie.split(";").map(c => {
+          const parts = c.trim().split("=");
+          return [parts[0], decodeURIComponent(parts[1] || "")];
+        })
+      );
+      if (cookies["email"]) {
+        email = cookies["email"];
+        console.log(`[Session Upgrade] Resolved email context from cookie: ${email}`);
+      }
+    } catch (err) {
+      console.warn("[Session Upgrade] Failed to parse request cookies:", err.message);
+    }
+  }
 
   // Fallback for local web dashboard compatibility: load first database user or create developer profile
   if (!email) {

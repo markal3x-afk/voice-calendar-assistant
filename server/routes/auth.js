@@ -108,6 +108,15 @@ router.get("/google/callback", async (req, res) => {
 
     console.log(`Successfully authenticated user: ${email}`);
 
+    // Set cookie to identify user sessions across WebViews and WebSocket gateway requests
+    res.cookie("email", email, { 
+      maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
+      httpOnly: false,                   // Let frontend read if needed
+      path: "/",
+      sameSite: "lax",
+      secure: true                       // DigitalOcean terminates SSL with HTTPS
+    });
+
     // 3. Upsert user in 'users' table
     let userResult = await db.query(
       "INSERT INTO users (email) VALUES ($1) ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email RETURNING *",
