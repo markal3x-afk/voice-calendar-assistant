@@ -82,6 +82,18 @@ wss.on("connection", (ws, request) => {
 // Bootstrap the gateway
 async function bootstrap() {
   console.log("Bootstrapping Gemini-MCP Voice Assistant Gateway...");
+  
+  if (process.env.DATABASE_URL) {
+    try {
+      // Parse URL to check hostname (avoid logging sensitive credentials)
+      const dbUrl = new URL(process.env.DATABASE_URL);
+      console.log(`[Database Config] Target PostgreSQL Host: ${dbUrl.hostname}`);
+    } catch (err) {
+      console.warn(`[Database Config] Failed to parse DATABASE_URL variable.`);
+    }
+  } else {
+    console.warn(`[Database Config] DATABASE_URL is not defined.`);
+  }
 
   try {
     // 1. Initialize MCP Manager (Spawns Google Workspace, Search subprocesses)
