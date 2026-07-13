@@ -6,8 +6,18 @@ const isPostgresConfigured = !!process.env.DATABASE_URL;
 
 let pool = null;
 if (isPostgresConfigured) {
+  let connectionString = process.env.DATABASE_URL;
+  try {
+    // Strip sslmode parameter so pg does not override our programmatic SSL settings
+    const parsedUrl = new URL(connectionString);
+    parsedUrl.searchParams.delete("sslmode");
+    connectionString = parsedUrl.toString();
+  } catch (err) {
+    // Fallback to raw string if parsing fails
+  }
+
   pool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString,
     ssl: {
       rejectUnauthorized: false // Necessary for DigitalOcean managed PostgreSQL connections
     }
