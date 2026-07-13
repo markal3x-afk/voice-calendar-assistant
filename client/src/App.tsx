@@ -71,9 +71,17 @@ export default function App() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Speakers / Mic states for visualizer animation
-  const [isModelSpeaking, setIsModelSpeaking] = useState(false);
+  const [isModelSpeaking, setIsModelSpeakingState] = useState(false);
+  const isModelSpeakingRef = useRef(false);
+  const setIsModelSpeaking = (val: boolean) => {
+    isModelSpeakingRef.current = val;
+    setIsModelSpeakingState(val);
+  };
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const speakingTimeoutRef = useRef<any>(null);
+
+  // Visual widgets queue to buffer event cards while the assistant is speaking
+  const pendingWidgetsRef = useRef<any[]>([]);
 
   // Fetch preferences.md file content
   const fetchPreferences = async () => {
@@ -398,11 +406,18 @@ export default function App() {
 
           if (msg.serverContent.turnComplete) {
             setIsModelSpeaking(false);
+            // Flush any buffered visual widgets that were loaded while speaking
+            if (pendingWidgetsRef.current.length > 0) {
+              console.log(`Flushing ${pendingWidgetsRef.current.length} buffered widgets.`);
+              setMessages((prev) => [...prev, ...pendingWidgetsRef.current]);
+              pendingWidgetsRef.current = [];
+            }
           }
           if (msg.serverContent.interrupted) {
-            console.log("Model interrupted.");
+            console.log("Model interrupted. Clearing pending widgets.");
             audioManager.clearPlaybackQueue();
             setIsModelSpeaking(false);
+            pendingWidgetsRef.current = []; // Clear any buffered widgets on interruption
             addLog("system", "[Interrupted]");
             setMessages((prev) => [
               ...prev,
@@ -472,6 +487,15 @@ export default function App() {
 
         // 4. Handle Tool Responses (extract events for visual widgets)
         if (msg.toolResponse) {
+          const addWidget = (widget: any) => {
+            if (isModelSpeakingRef.current) {
+              console.log("Model is speaking. Buffering visual widget:", widget.text);
+              pendingWidgetsRef.current.push(widget);
+            } else {
+              setMessages((prev) => [...prev, widget]);
+            }
+          };
+
           const functionResponses = msg.toolResponse.functionResponses || [];
           functionResponses.forEach((funcResp: any) => {
             const name = funcResp.name;
@@ -493,39 +517,33 @@ export default function App() {
                   location: e.location
                 }));
 
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: Math.random().toString(36).substr(2, 9),
-                    sender: "widget",
-                    text: `Found ${events.length} calendar events`,
-                    timestamp: new Date(),
-                    widgetType: "event-list",
-                    eventsData: formattedEvents
-                  }
-                ]);
+                addWidget({
+                  id: Math.random().toString(36).substr(2, 9),
+                  sender: "widget",
+                  text: `Found ${events.length} calendar events`,
+                  timestamp: new Date(),
+                  widgetType: "event-list",
+                  eventsData: formattedEvents
+                });
               }
             } else if (name === "create_event" || name === "quick_add_event" || name === "update_event" || name === "get_event") {
               const event = responseData;
               if (event && (event.summary || event.id)) {
-                setMessages((prev) => [
-                  ...prev,
-                  {
-                    id: Math.random().toString(36).substr(2, 9),
-                    sender: "widget",
-                    text: name === "create_event" || name === "quick_add_event" ? "Created new event" : "Updated event",
-                    timestamp: new Date(),
-                    widgetType: "event-detail",
-                    eventsData: [{
-                      id: event.id || Math.random().toString(),
-                      summary: event.summary || "Untitled Event",
-                      start: event.start || {},
-                      end: event.end || {},
-                      htmlLink: event.htmlLink,
-                      location: event.location
-                    }]
-                  }
-                ]);
+                addWidget({
+                  id: Math.random().toString(36).substr(2, 9),
+                  sender: "widget",
+                  text: name === "create_event" || name === "quick_add_event" ? "Created new event" : "Updated event",
+                  timestamp: new Date(),
+                  widgetType: "event-detail",
+                  eventsData: [{
+                    id: event.id || Math.random().toString(),
+                    summary: event.summary || "Untitled Event",
+                    start: event.start || {},
+                    end: event.end || {},
+                    htmlLink: event.htmlLink,
+                    location: event.location
+                  }]
+                });
               }
             }
           });

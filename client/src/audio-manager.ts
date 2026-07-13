@@ -131,15 +131,29 @@ export class AudioManager {
       }
     }
 
-    // 3. Override silent frames with absolute digital silence (all zeros)
-    // This blocks static noise and prevents false interruptions, while keeping 
-    // the stream continuous so we don't stall our 100ms buffering accumulator.
-    const processedData = new Float32Array(floatData.length);
-    if (this.silenceCounter > 0) {
-      processedData.set(floatData);
-    } // If silenceCounter is 0, processedData remains all zeros (perfect silence)
+    // 3. Stop transmission during idle silence to let Gemini finalize the turn.
+    // If the hangover expires (silenceCounter === 0), we check if the accumulator
+    // has any residual data, flush it by padding with zeros, and cease streaming.
+    if (this.silenceCounter === 0) {
+      if (this.pcmAccumulator.length > 0) {
+        // Pad the remainder space with clean zeros to hit the 1600 threshold
+        while (this.pcmAccumulator.length < 1600) {
+          this.pcmAccumulator.push(0);
+        }
+        const chunk = new Int16Array(this.pcmAccumulator);
+        const base64 = this.int16ToBase64(chunk);
+        this.onAudioChunkCallback(base64);
+        this.pcmAccumulator = []; // Clear accumulator
+      }
+      return; // Cease audio packet transmission
+    }
 
-    // Resample to 16kHz 16-bit signed PCM
+    // 4. Speaking/hangover is active. Resample the raw float input to 16kHz 16-bit signed PCM
+    // During the hangover frames, we can inject digital silence (zeros) if the user stops
+    // speaking, but we still resample to keep the stream continuous until the flush.
+    const processedData = new Float32Array(floatData.length);
+    processedData.set(floatData);
+
     const pcm16 = this.resampler.resample(processedData);
     if (pcm16.length === 0) return;
 
