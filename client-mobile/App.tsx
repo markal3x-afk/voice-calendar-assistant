@@ -7,7 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 
 // Default production URL fallback (replace this when deploying to DigitalOcean)
 const PRODUCTION_URL = 'https://urchin-app-s2xuq.ondigitalocean.app'; 
-const DEV_TUNNEL_URL = 'https://192.168.1.133:3000'; // Direct Local Secure HTTPS Server
+const DEV_TUNNEL_URL = 'https://urchin-app-s2xuq.ondigitalocean.app'; // Temp redirect for cloud testing
 
 export default function App() {
   const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
@@ -69,15 +69,60 @@ export default function App() {
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
         mediaCapturePermissionGrantType="grant"
+        onPermissionRequest={(request) => {
+          console.log(`[WebView Permission Request] Auto-granting:`, request.resources);
+          request.grant();
+        }}
         
         // Enable standard browser stores for caching sessions
         domStorageEnabled={true}
         javaScriptEnabled={true}
         
+        // Console forwarding bridge
+        injectedJavaScript={`
+          (function() {
+            var origLog = console.log;
+            var origError = console.error;
+            console.log = function() {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'log', data: Array.from(arguments).join(' ') }));
+              origLog.apply(console, arguments);
+            };
+            console.error = function() {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'error', data: Array.from(arguments).join(' ') }));
+              origError.apply(console, arguments);
+            };
+            window.addEventListener('unhandledrejection', function(event) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'error', data: 'Unhandled Promise Rejection: ' + event.reason }));
+            });
+          })();
+        `}
+        onMessage={(event) => {
+          try {
+            const msg = JSON.parse(event.nativeEvent.data);
+            if (msg.type === 'log') {
+              console.log(`[WebView Log] ${msg.data}`);
+            } else if (msg.type === 'error') {
+              console.warn(`[WebView Error] ${msg.data}`);
+            }
+          } catch(e) {
+            console.log('[WebView Native Message]', event.nativeEvent.data);
+          }
+        }}
+        
         // Intercept external link clicks and open them in Safari instead of navigating the WebView away
         onShouldStartLoadWithRequest={(request) => {
           const url = request.url;
           
+          // 1. Force Google OAuth redirect trigger to open in native system Safari browser 
+          // to comply with Google's secure browser policy (prevent disallowed_useragent error)
+          if (url.includes('/api/auth/google') && !url.includes('/callback')) {
+            console.log(`[WebView Interceptor] Routing Google OAuth link to native iOS Safari: ${url}`);
+            Linking.openURL(url).catch(err => {
+              console.error('Failed to open OAuth natively:', err);
+            });
+            return false; // Block it from loading inside the WebView
+          }
+
           // Only intercept manual link clicks (user tapping an anchor tag)
           // This prevents blocking fonts, scripts, stylesheets, or other subresources
           if (request.navigationType !== 'click') {
