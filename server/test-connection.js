@@ -68,7 +68,7 @@ async function runTests() {
     // Formulate the exact setup payload we use in production
     const setupMessage = {
       setup: {
-        model: "models/gemini-2.0-flash-exp",
+        model: "models/gemini-3.1-flash-live",
         generationConfig: {
           responseModalities: ["AUDIO"],
           speechConfig: {
