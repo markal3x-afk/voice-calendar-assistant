@@ -247,7 +247,8 @@ export default function App() {
 
     try {
       const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const wsUrl = `${proto}//${window.location.host}/api/live-session`;
+      const clientTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Los_Angeles";
+      const wsUrl = `${proto}//${window.location.host}/api/live-session?timezone=${encodeURIComponent(clientTimezone)}`;
 
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;

@@ -12,9 +12,10 @@ const GEMINI_LIVE_URL = "wss://generativelanguage.googleapis.com/ws/google.ai.ge
 export async function handleLiveSession(clientWs, request) {
   console.log("Client connected. Parsing user email context...");
 
-  // 1. Resolve email parameter from connection query string or fallback to cookie header
+  // 1. Resolve email parameter and client timezone from connection query string or fallback to cookie header
   const urlObj = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   let email = urlObj.searchParams.get("email");
+  const clientTimezone = urlObj.searchParams.get("timezone") || "America/Los_Angeles";
 
   if (!email && request.headers.cookie) {
     try {
@@ -127,13 +128,14 @@ export async function handleLiveSession(clientWs, request) {
     console.error(`Failed to read preferences for user_id: ${user.id}`, err);
   }
 
-  // 6. Generate current date-time context (America/Los_Angeles)
+  // 6. Generate current date-time context matching the user's actual device location (timezone)
   const now = new Date();
   const timeContext = `Current Time Context:
-- Today is: ${now.toLocaleDateString("en-US", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'America/Los_Angeles' })}
-- Current Local Time: ${now.toLocaleTimeString("en-US", { timeZone: 'America/Los_Angeles' })} (America/Los_Angeles)
+- Today is: ${now.toLocaleDateString("en-US", { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: clientTimezone })}
+- Current Local Time: ${now.toLocaleTimeString("en-US", { timeZone: clientTimezone })} (${clientTimezone})
+- User's Device/Location Timezone: ${clientTimezone}
 Use this reference to resolve relative dates (like "tomorrow", "next Thursday", or "July 23rd") when making calendar queries.
-When calling calendar tools, you MUST format all ISO 8601 timestamps (such as timeMin/timeMax) in the America/Los_Angeles timezone using the -07:00 offset (e.g. 2026-07-23T00:00:00-07:00). Do NOT use UTC ('Z' suffix), otherwise queries will be shifted by 7 hours.`;
+When calling calendar tools, note that the target calendar may be in a different timezone. You MUST convert relative query timestamps (such as timeMin/timeMax) into ISO 8601 strings relative to the calendar's timezone, or use the client timezone offset accordingly.`;
 
   // 7. Define System Instructions
   const systemInstruction = `You are a helpful, general-purpose voice-enabled AI assistant.
@@ -143,6 +145,14 @@ ${timeContext}
 
 You have access to a set of Google Calendar and memory tools.
 Always prefer running tools to answer calendar requests or search questions.
+
+TIMEZONE & TRAVEL AWARENESS:
+- The user travels frequently. Their current local device timezone is: "${clientTimezone}".
+- However, their calendar events may be scheduled under a different native calendar timezone (e.g. America/Los_Angeles).
+- When retrieving, creating, or discussing events, be extremely mindful of timezone conversions.
+- If the user asks about the time of a meeting, or how it converts when traveling, check the event's start time timezone and convert it explicitly.
+- For example, say: "That meeting is scheduled for 2:00 PM Eastern Time, which will be 11:00 AM in your current Pacific local time."
+- Clearly specify both timezones in your verbal explanation if they differ, so the user knows exactly when the meeting occurs in both locations.
 
 Here are the user's saved preferences and memories. You MUST follow them at all times:
 ${userPrefs}
