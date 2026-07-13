@@ -60,6 +60,8 @@ export default function App() {
   const [showConsole, setShowConsole] = useState(false);
   const [showMemory, setShowMemory] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [isMicActive, setIsMicActive] = useState(false);
+  const [mutePlayback, setMutePlayback] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioManagerRef = useRef<AudioManager | null>(null);
@@ -187,26 +189,46 @@ export default function App() {
   };
 
   /**
-   * Toggles the WebSocket voice session connection
+   * Toggles the WebSocket voice session connection or toggles the mic state if online
    */
   const handleToggleConnection = async () => {
-    if (isConnected) {
-      disconnect();
+    if (!isConnected) {
+      await connect(undefined, true);
     } else {
-      await connect();
+      // Toggle microphone recording state while keeping WebSocket active
+      if (isMicActive) {
+        if (audioManagerRef.current) {
+          audioManagerRef.current.stopRecording();
+        }
+        setIsMicActive(false);
+        setMutePlayback(true);
+        addLog("system", "Microphone deactivated. Verbal response disabled.");
+      } else {
+        if (audioManagerRef.current) {
+          try {
+            await audioManagerRef.current.startRecording();
+            setIsMicActive(true);
+            setMutePlayback(false);
+            addLog("system", "Microphone active. Speak now!");
+          } catch (err) {
+            console.error("Failed to start recording:", err);
+            addLog("system", "Microphone access failed.");
+          }
+        }
+      }
     }
   };
 
-  const connect = async (pendingText?: string) => {
+  const connect = async (pendingText?: string, startMic: boolean = true) => {
     setIsConnecting(true);
     setStatusMessage("Connecting to Server...");
-    addLog("system", "Starting Voice Session...");
+    addLog("system", startMic ? "Starting Voice Session..." : "Opening text gateway...");
     setMessages((prev) => [
       ...prev,
       {
         id: Math.random().toString(36).substr(2, 9),
         sender: "system",
-        text: "⚡ Initializing voice assistant session...",
+        text: startMic ? "⚡ Initializing voice assistant session..." : "⚡ Connecting text assistant...",
         timestamp: new Date()
       }
     ]);
@@ -234,20 +256,37 @@ export default function App() {
       ws.onopen = async () => {
         console.log("WebSocket connected to gateway.");
         try {
-          await audioManager.startRecording();
+          if (startMic) {
+            await audioManager.startRecording();
+            setIsMicActive(true);
+            setMutePlayback(false);
+            addLog("system", "Session established. Speak now!");
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: Math.random().toString(36).substr(2, 9),
+                sender: "system",
+                text: "🎤 Assistant is listening. Speak to chat!",
+                timestamp: new Date()
+              }
+            ]);
+          } else {
+            setIsMicActive(false);
+            setMutePlayback(true);
+            addLog("system", "Text session established.");
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: Math.random().toString(36).substr(2, 9),
+                sender: "system",
+                text: "💬 Connected in text mode. Type below!",
+                timestamp: new Date()
+              }
+            ]);
+          }
           setIsConnected(true);
           setIsConnecting(false);
           setStatusMessage("Live Connection Active");
-          addLog("system", "Session established. Speak now!");
-          setMessages((prev) => [
-            ...prev,
-            {
-              id: Math.random().toString(36).substr(2, 9),
-              sender: "system",
-              text: "🎤 Assistant is listening. Speak to chat!",
-              timestamp: new Date()
-            }
-          ]);
 
           if (pendingText) {
             ws.send(JSON.stringify({ type: "text", text: pendingText }));
@@ -324,8 +363,10 @@ export default function App() {
               }
 
               if (part.inlineData && part.inlineData.data) {
-                audioManager.playAudioChunk(part.inlineData.data);
-                setIsModelSpeaking(true);
+                if (!mutePlayback) {
+                  audioManager.playAudioChunk(part.inlineData.data);
+                  setIsModelSpeaking(true);
+                }
               }
             }
           }
@@ -495,6 +536,8 @@ export default function App() {
     setIsConnecting(false);
     setIsModelSpeaking(false);
     setIsUserSpeaking(false);
+    setIsMicActive(false);
+    setMutePlayback(false);
     setStatusMessage("Disconnected");
     addLog("system", "Voice Session Ended.");
     setMessages((prev) => [
@@ -532,10 +575,12 @@ export default function App() {
     addLog("user", textToSend);
 
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      setMutePlayback(true);
       wsRef.current.send(JSON.stringify({ type: "text", text: textToSend }));
     } else {
+      setMutePlayback(true);
       addLog("system", "Auto-connecting session to send message...");
-      await connect(textToSend);
+      await connect(textToSend, false); // Connect with startMic = false
     }
   };
 
@@ -743,12 +788,12 @@ export default function App() {
           <div className="chat-controls-bar">
             {/* Start / Stop Session Button */}
             <button
-              className={`mic-button-upgrade ${isConnected ? "active" : isConnecting ? "connecting" : ""}`}
+              className={`mic-button-upgrade ${(isConnected && isMicActive) ? "active" : isConnecting ? "connecting" : ""}`}
               onClick={handleToggleConnection}
               disabled={isConnecting}
-              title={isConnected ? "Close Session" : "Start Session"}
+              title={(isConnected && isMicActive) ? "Mute Microphone" : "Activate Microphone"}
             >
-              {isConnecting ? "⏳" : isConnected ? "🔴" : "🎤"}
+              {isConnecting ? "⏳" : (isConnected && isMicActive) ? "🔴" : "🎤"}
             </button>
 
             {/* Form Input */}
@@ -758,7 +803,18 @@ export default function App() {
                 className="unified-text-input"
                 placeholder="Message Calendar Live..."
                 value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
+                onChange={(e) => {
+                  setTextInput(e.target.value);
+                  // Auto-close microphone when starting to type to prevent interruptions
+                  if (isMicActive) {
+                    if (audioManagerRef.current) {
+                      audioManagerRef.current.stopRecording();
+                    }
+                    setIsMicActive(false);
+                    setMutePlayback(true);
+                    addLog("system", "Typing detected. Closing microphone.");
+                  }
+                }}
               />
               <button 
                 type="submit" 
