@@ -51,6 +51,11 @@ export class AudioManager {
 
   private pcmAccumulator: number[] = [];
 
+  // Voice Activity Detection (VAD) properties for echo/static suppression
+  private silenceCounter = 0;
+  private readonly HANGOVER_FRAMES = 25; // ~200ms at typical chunk rates (128-sample blocks)
+  private readonly MIN_VOLUME_THRESHOLD = 0.004; // RMS amplitude threshold for noise gate
+
   constructor(onAudioChunk: (base64Pcm: string) => void) {
     this.onAudioChunkCallback = onAudioChunk;
   }
@@ -109,6 +114,27 @@ export class AudioManager {
    */
   private handleIncomingMicData(floatData: Float32Array) {
     if (!this.resampler || !this.onAudioChunkCallback) return;
+
+    // 1. Calculate Root Mean Square (RMS) volume of the raw microphone float buffer
+    let sumSquares = 0;
+    for (let i = 0; i < floatData.length; i++) {
+      sumSquares += floatData[i] * floatData[i];
+    }
+    const rms = Math.sqrt(sumSquares / floatData.length);
+
+    // 2. Evaluate if volume is above our threshold (active speaking)
+    if (rms > this.MIN_VOLUME_THRESHOLD) {
+      this.silenceCounter = this.HANGOVER_FRAMES; // Reset/Keep speaking hangover open
+    } else {
+      if (this.silenceCounter > 0) {
+        this.silenceCounter--; // Count down hangover frames to allow sentence endings
+      }
+    }
+
+    // 3. Drop silent frames to prevent static and echo from interrupting Gemini
+    if (this.silenceCounter === 0) {
+      return;
+    }
 
     // Resample to 16kHz 16-bit signed PCM
     const pcm16 = this.resampler.resample(floatData);
