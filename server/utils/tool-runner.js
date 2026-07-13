@@ -3,6 +3,24 @@ import fs from "fs";
 import path from "path";
 
 /**
+ * Sanitizes Google Calendar event objects to prevent massive nested JSON payloads
+ * (like conferenceData, creator email details, rules, etc.) from hitting 
+ * Gemini Live API constraints or causing validation errors.
+ */
+function sanitizeEvent(event) {
+  if (!event) return null;
+  return {
+    id: event.id,
+    summary: event.summary,
+    description: event.description ? event.description.substring(0, 500) : undefined, // Truncate description to save tokens
+    location: event.location,
+    start: event.start,
+    end: event.end,
+    htmlLink: event.htmlLink
+  };
+}
+
+/**
  * Handles tool executions securely within a user's database context.
  * @param {string} name Name of the function declaration
  * @param {object} args Arguments supplied by Gemini Live
@@ -86,10 +104,10 @@ export async function executeUserTool(name, args, googleClient, userId) {
         return new Date(startA) - new Date(startB);
       });
       
-      return mergedEvents;
+      return mergedEvents.map(sanitizeEvent);
     } else {
       const events = await googleClient.listEvents(calendarId, params);
-      return events.items || [];
+      return (events.items || []).map(sanitizeEvent);
     }
   }
   
@@ -104,12 +122,14 @@ export async function executeUserTool(name, args, googleClient, userId) {
     if (args.attendees) eventData.attendees = args.attendees;
     if (args.location) eventData.location = args.location;
     
-    return await googleClient.createEvent(calendarId, eventData);
+    const newEvent = await googleClient.createEvent(calendarId, eventData);
+    return sanitizeEvent(newEvent);
   }
   
   if (name === "get_event") {
     const calendarId = args.calendarId || "primary";
-    return await googleClient.getEvent(calendarId, args.eventId);
+    const event = await googleClient.getEvent(calendarId, args.eventId);
+    return sanitizeEvent(event);
   }
   
   if (name === "update_event") {
@@ -123,7 +143,8 @@ export async function executeUserTool(name, args, googleClient, userId) {
     if (args.attendees) eventData.attendees = args.attendees;
     if (args.location) eventData.location = args.location;
     
-    return await googleClient.updateEvent(calendarId, args.eventId, eventData);
+    const updatedEvent = await googleClient.updateEvent(calendarId, args.eventId, eventData);
+    return sanitizeEvent(updatedEvent);
   }
   
   if (name === "delete_event") {

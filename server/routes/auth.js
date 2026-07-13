@@ -154,46 +154,77 @@ router.get("/google/callback", async (req, res) => {
       <html>
       <head>
         <title>Authorization Successful</title>
-        <meta name="viewport" content="width=device-width, initial-scale=device-width">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <style>
           body {
-            font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            background: #fbfbf9;
-            color: #2a2827;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f7f6f2; /* Shoji Sand Gray */
+            color: #2c2a29;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
-            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
           }
           .card {
-            background: #ffffff;
-            border: 1px solid #e6e2d8;
-            border-radius: 12px;
-            padding: 30px;
-            box-shadow: 0 4px 12px rgba(42,40,39,0.02);
-            max-width: 360px;
+            background-color: #ffffff;
+            border: 1px solid #e3dec3;
+            border-radius: 16px;
+            padding: 32px 24px;
+            box-shadow: 0 8px 24px rgba(44, 42, 41, 0.04);
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
           }
-          h2 { font-size: 20px; font-weight: 500; margin: 0 0 10px 0; }
-          p { font-size: 14px; color: #7a7672; line-height: 1.5; margin: 0 0 20px 0; }
+          .success-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            color: #5c7a80; /* Moss Green */
+          }
+          h2 {
+            font-size: 22px;
+            font-weight: 700;
+            margin: 0 0 12px 0;
+            letter-spacing: -0.5px;
+          }
+          p {
+            font-size: 14px;
+            color: #706b68;
+            line-height: 1.6;
+            margin: 0 0 24px 0;
+          }
           .badge {
-            background: #f2efe6;
-            color: #4c5b66;
-            padding: 6px 12px;
-            border-radius: 20px;
+            background: #f0ede4;
+            color: #5c7a80;
+            padding: 8px 16px;
+            border-radius: 30px;
             font-size: 13px;
+            font-weight: 600;
             display: inline-block;
+            margin-bottom: 24px;
+          }
+          .instruction-box {
+            background: #f7f6f2;
+            border-left: 3px solid #c95942; /* Hanko Vermilion */
+            padding: 12px 16px;
+            border-radius: 6px;
+            font-size: 13px;
+            color: #2c2a29;
+            text-align: left;
+            line-height: 1.5;
           }
         </style>
       </head>
       <body>
         <div class="card">
-          <h2>Authorization Successful</h2>
-          <p>Your calendar account has been securely linked.</p>
-          <div class="badge" style="margin-bottom: 18px;">${email}</div>
-          <div>
-            <a href="/" style="text-decoration: none; display: inline-block; padding: 10px 20px; background: #c95942; color: #ffffff; border-radius: 20px; font-size: 14px; font-weight: 500;">Return to Assistant</a>
+          <div class="success-icon">✓</div>
+          <h2>Link Successful!</h2>
+          <p>Your Google Calendar has been securely authorized and connected to the assistant.</p>
+          <div class="badge">${email}</div>
+          <div class="instruction-box">
+            👉 <strong>Please tap "Done"</strong> in the top-left corner of this screen to return to the assistant interface and start your session.
           </div>
         </div>
       </body>
