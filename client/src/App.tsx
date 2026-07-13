@@ -59,6 +59,7 @@ export default function App() {
   const [textInput, setTextInput] = useState("");
   const [showConsole, setShowConsole] = useState(false);
   const [showMemory, setShowMemory] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const audioManagerRef = useRef<AudioManager | null>(null);
@@ -590,38 +591,61 @@ export default function App() {
       {/* 2. Main Column: Threaded Chatbot & Live Visualizer */}
       <div className="main-chat-area">
         <div className="chat-header">
-          <div>
-            <h1 style={{ fontSize: "18px", fontWeight: 700, letterSpacing: "-0.5px" }}>
+          {/* Hamburger Menu on Left */}
+          <div className="header-left">
+            <button 
+              className="hamburger-btn"
+              onClick={() => setShowMenu(!showMenu)}
+              title="Open Menu"
+            >
+              ☰
+            </button>
+            
+            {showMenu && (
+              <div className="hamburger-dropdown">
+                <a 
+                  href="/api/auth/google" 
+                  className="dropdown-item"
+                  title="Link Google Calendar"
+                  onClick={() => setShowMenu(false)}
+                >
+                  🔑 Link Google
+                </a>
+                <button 
+                  className="dropdown-item"
+                  onClick={() => {
+                    setShowMemory(!showMemory);
+                    setShowMenu(false);
+                  }}
+                  title="Toggle Memory"
+                >
+                  🧠 Memory
+                </button>
+                <button 
+                  className="dropdown-item"
+                  onClick={() => {
+                    setShowConsole(!showConsole);
+                    setShowMenu(false);
+                  }}
+                  title="Toggle Dev Console"
+                >
+                  🖥️ Logs
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Centered Title */}
+          <div className="header-center">
+            <h1 style={{ fontSize: "18px", fontWeight: 700, letterSpacing: "-0.5px", margin: 0 }}>
               Calendar <span style={{ color: "var(--accent-cyan)" }}>Live</span>
             </h1>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <a 
-              href="/api/auth/google" 
-              className="toggle-console-btn"
-              style={{ textDecoration: "none", color: "inherit", display: "inline-flex", alignItems: "center", gap: "4px" }}
-              title="Link Google Calendar"
-            >
-              🔑 Link Google
-            </a>
-            <button 
-              className="toggle-console-btn"
-              onClick={() => setShowMemory(!showMemory)}
-              title="Toggle Memory"
-            >
-              🧠 Memory
-            </button>
-            <button 
-              className="toggle-console-btn"
-              onClick={() => setShowConsole(!showConsole)}
-              title="Toggle Dev Console"
-            >
-              🖥️ Logs
-            </button>
+
+          {/* Connection Status on Right */}
+          <div className="header-right">
             <div className={`status-dot ${isConnected ? "active" : isConnecting ? "connecting" : ""}`} />
-            <span style={{ fontSize: "12px", color: "var(--text-secondary)" }}>
-              {statusMessage}
-            </span>
+            <span className="status-text">{statusMessage}</span>
           </div>
         </div>
 
