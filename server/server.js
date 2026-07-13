@@ -38,6 +38,93 @@ app.use(express.static(clientDistPath));
 // Mount Google OAuth endpoints
 app.use("/api/auth", authRouter);
 
+// Automated self-testing diagnostics endpoint
+app.get("/api/test-diagnostics", async (req, res) => {
+  const report = {
+    timestamp: new Date().toISOString(),
+    status: "ok",
+    database: { status: "unknown" },
+    encryption: { status: "unknown" },
+    google_oauth: { status: "unknown" },
+    gemini_api: { status: "unknown" },
+    mcp_server: { status: "unknown" }
+  };
+
+  // 1. Check Database connection & latency
+  try {
+    const startDb = Date.now();
+    await db.query("SELECT 1");
+    report.database = { status: "ok", latency: `${Date.now() - startDb}ms` };
+  } catch (err) {
+    report.status = "error";
+    report.database = { status: "failed", error: err.message };
+  }
+
+  // 2. Check Cryptographic Decryption Key
+  try {
+    const { encrypt, decrypt } = await import("./utils/crypto.js");
+    const testVal = "diagnostic-test";
+    const enc = encrypt(testVal);
+    const dec = decrypt(enc);
+    if (dec === testVal) {
+      report.encryption = { status: "ok" };
+    } else {
+      throw new Error("Decrypted value mismatch");
+    }
+  } catch (err) {
+    report.status = "error";
+    report.encryption = { status: "failed", error: err.message };
+  }
+
+  // 3. Check Google OAuth tables & records
+  try {
+    const usersCountRes = await db.query("SELECT COUNT(*) FROM users");
+    const credsCountRes = await db.query("SELECT COUNT(*) FROM google_credentials");
+    report.google_oauth = {
+      status: "ok",
+      registered_users: parseInt(usersCountRes.rows[0].count, 10),
+      linked_credentials: parseInt(credsCountRes.rows[0].count, 10)
+    };
+  } catch (err) {
+    // If DB is offline, this would also fail but we wrap separately
+    report.status = "error";
+    report.google_oauth = { status: "failed", error: err.message };
+  }
+
+  // 4. Check Gemini API configuration
+  try {
+    const key = process.env.GEMINI_API_KEY;
+    if (!key) {
+      throw new Error("GEMINI_API_KEY environment variable is not defined");
+    }
+    report.gemini_api = {
+      status: "ok",
+      key_present: true,
+      key_length: key.length
+    };
+  } catch (err) {
+    report.status = "error";
+    report.gemini_api = { status: "failed", error: err.message };
+  }
+
+  // 5. Check Google Workspace MCP server subprocess
+  try {
+    const tools = mcpManager.getGeminiTools();
+    report.mcp_server = {
+      status: tools && tools.length > 0 ? "ok" : "failed",
+      tools_loaded: tools ? tools.length : 0
+    };
+    if (report.mcp_server.status === "failed") {
+      report.status = "error";
+    }
+  } catch (err) {
+    report.status = "error";
+    report.mcp_server = { status: "failed", error: err.message };
+  }
+
+  res.json(report);
+});
+
 // Endpoint to retrieve preferences.md contents for the UI
 app.get("/api/preferences", (req, res) => {
   const prefPath = path.resolve(process.cwd(), "server", "data", "preferences.md");

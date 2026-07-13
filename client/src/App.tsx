@@ -582,6 +582,55 @@ export default function App() {
       addLog("system", "Auto-connecting session to send message...");
       await connect(textToSend, false); // Connect with startMic = false
     }
+  const runSelfCheck = async () => {
+    setShowMenu(false);
+    addLog("system", "Starting integration self-diagnostics check...");
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Math.random().toString(36).substr(2, 9),
+        sender: "system",
+        text: "🔍 Running system integration self-check...",
+        timestamp: new Date()
+      }
+    ]);
+
+    try {
+      const res = await fetch("/api/test-diagnostics");
+      const report = await res.json();
+      
+      const lines = [
+        `🤖 System Self-Check: ${report.status.toUpperCase()}`,
+        `📅 Date: ${new Date(report.timestamp).toLocaleString()}`,
+        `🛢️ Database: ${report.database.status === "ok" ? `✅ OK (Latency: ${report.database.latency})` : `❌ FAILED: ${report.database.error}`}`,
+        `🔑 Cryptography: ${report.encryption.status === "ok" ? "✅ OK" : `❌ FAILED: ${report.encryption.error}`}`,
+        `👤 Accounts Linked: ${report.google_oauth.status === "ok" ? `✅ OK (Users: ${report.google_oauth.registered_users}, Credentials: ${report.google_oauth.linked_credentials})` : `❌ FAILED: ${report.google_oauth.error}`}`,
+        `⚡ Gemini API: ${report.gemini_api.status === "ok" ? `✅ OK (Key present)` : `❌ FAILED: ${report.gemini_api.error}`}`,
+        `🔧 MCP Workspace: ${report.mcp_server.status === "ok" ? `✅ OK (Tools loaded: ${report.mcp_server.tools_loaded})` : `❌ FAILED: ${report.mcp_server.error}`}`
+      ];
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          sender: "system",
+          text: lines.join("\n"),
+          timestamp: new Date()
+        }
+      ]);
+      addLog("system", `System diagnostics completed: ${report.status}`);
+    } catch (err: any) {
+      console.error("Failed to run diagnostics:", err);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Math.random().toString(36).substr(2, 9),
+          sender: "system",
+          text: `❌ Diagnostics failed to run: ${err.message}`,
+          timestamp: new Date()
+        }
+      ]);
+    }
   };
 
   return (
@@ -675,6 +724,13 @@ export default function App() {
                   title="Toggle Dev Console"
                 >
                   🖥️ Logs
+                </button>
+                <button 
+                  className="dropdown-item"
+                  onClick={runSelfCheck}
+                  title="Run Self Diagnostics"
+                >
+                  🔍 Diagnostics
                 </button>
               </div>
             )}
