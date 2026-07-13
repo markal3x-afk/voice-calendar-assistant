@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { StyleSheet, SafeAreaView, ActivityIndicator, View, Text, Alert, Linking } from 'react-native';
+import { StyleSheet, SafeAreaView, ActivityIndicator, View, Text, Alert, Linking, KeyboardAvoidingView, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Audio } from 'expo-av';
 import Constants from 'expo-constants';
@@ -63,7 +63,11 @@ export default function App() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
-      <WebView
+      <KeyboardAvoidingView 
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <WebView
         ref={webViewRef}
         source={{ uri: webUrl }}
         style={styles.webview}
@@ -178,6 +182,7 @@ export default function App() {
           </View>
         )}
       />
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -186,6 +191,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#fcfbf9', // Matches warm Japanese-minimalism washi background
+  },
+  keyboardContainer: {
+    flex: 1,
   },
   webview: {
     flex: 1,
