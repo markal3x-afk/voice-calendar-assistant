@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { StyleSheet, SafeAreaView, ActivityIndicator, View, Text, Alert, Linking } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Audio } from 'expo-av';
 import Constants from 'expo-constants';
 import { StatusBar } from 'expo-status-bar';
+import * as WebBrowser from 'expo-web-browser';
 
 // Default production URL fallback (replace this when deploying to DigitalOcean)
 const PRODUCTION_URL = 'https://urchin-app-s2xuq.ondigitalocean.app'; 
@@ -12,6 +13,7 @@ const DEV_TUNNEL_URL = 'https://urchin-app-s2xuq.ondigitalocean.app'; // Temp re
 export default function App() {
   const [hasMicPermission, setHasMicPermission] = useState<boolean | null>(null);
   const [webUrl, setWebUrl] = useState<string>('');
+  const webViewRef = useRef<WebView | null>(null);
 
   // 1. Resolve Backend Server IP Address dynamically
   useEffect(() => {
@@ -62,6 +64,7 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar style="dark" />
       <WebView
+        ref={webViewRef}
         source={{ uri: webUrl }}
         style={styles.webview}
         
@@ -113,13 +116,21 @@ export default function App() {
         onShouldStartLoadWithRequest={(request) => {
           const url = request.url;
           
-          // 1. Force Google OAuth redirect trigger to open in native system Safari browser 
+          // 1. Force Google OAuth redirect trigger to open in native system secure authentication sheet
           // to comply with Google's secure browser policy (prevent disallowed_useragent error)
           if (url.includes('/api/auth/google') && !url.includes('/callback')) {
-            console.log(`[WebView Interceptor] Routing Google OAuth link to native iOS Safari: ${url}`);
-            Linking.openURL(url).catch(err => {
-              console.error('Failed to open OAuth natively:', err);
-            });
+            console.log(`[WebView Interceptor] Routing Google OAuth link to ASWebAuthenticationSession popup: ${url}`);
+            WebBrowser.openAuthSessionAsync(url, 'urchin-app-s2xuq.ondigitalocean.app')
+              .then((result) => {
+                console.log('[Auth Session] Native popup closed. Result type:', result.type);
+                // Reload the WebView so it picks up the newly active credentials
+                if (webViewRef.current) {
+                  webViewRef.current.reload();
+                }
+              })
+              .catch(err => {
+                console.error('Failed to open secure authentication modal:', err);
+              });
             return false; // Block it from loading inside the WebView
           }
 
