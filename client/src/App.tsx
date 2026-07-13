@@ -584,6 +584,14 @@ export default function App() {
             </h1>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <a 
+              href="/api/auth/google" 
+              className="toggle-console-btn"
+              style={{ textDecoration: "none", color: "inherit", display: "inline-flex", alignItems: "center", gap: "4px" }}
+              title="Link Google Calendar"
+            >
+              🔑 Link Google
+            </a>
             <button 
               className="toggle-console-btn"
               onClick={() => setShowMemory(!showMemory)}
