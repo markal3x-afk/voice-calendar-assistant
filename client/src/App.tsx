@@ -275,6 +275,11 @@ export default function App() {
 
       const audioManager = new AudioManager((base64Pcm) => {
         if (ws.readyState === WebSocket.OPEN) {
+          // Discard microphone data while the model is speaking to prevent local audio output
+          // (speaker echo, breathing, or feedback) from triggering false interruptions.
+          if (isModelSpeakingRef.current) {
+            return;
+          }
           ws.send(JSON.stringify({ type: "audio", data: base64Pcm }));
           setIsUserSpeaking(true);
 
