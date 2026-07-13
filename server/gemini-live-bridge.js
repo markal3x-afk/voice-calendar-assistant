@@ -235,6 +235,26 @@ When you decide to call a tool (like list_events, create_event, list_calendars, 
         const functionCalls = message.toolCall.functionCalls || [];
         const responses = [];
 
+        // Dynamic mid-session token refresh guard:
+        // Query the database for the user's latest tokens and refresh if the 1-hour window expired
+        try {
+          const credRes = await db.query("SELECT * FROM google_credentials WHERE user_id = $1", [user.id]);
+          if (credRes.rows.length > 0) {
+            const freshCreds = credRes.rows[0];
+            const saveCallback = async (updatedFields) => {
+              await db.query(
+                "UPDATE google_credentials SET access_token = $1, expiry_date = $2 WHERE user_id = $3",
+                [updatedFields.access_token, updatedFields.expiry_date, user.id]
+              );
+              console.log(`[Database] Dynamic mid-session token refresh completed for user_id: ${user.id}`);
+            };
+            const freshToken = await getActiveAccessToken(freshCreds, saveCallback);
+            googleClient.accessToken = freshToken; // Update client instance with the refreshed token
+          }
+        } catch (tokenErr) {
+          console.warn("[Session Tool Execution] Non-fatal token validation error:", tokenErr.message);
+        }
+
         for (const call of functionCalls) {
           const { id, name, args } = call;
           try {
