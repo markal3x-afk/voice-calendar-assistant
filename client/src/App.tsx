@@ -507,8 +507,8 @@ export default function App() {
         }
       };
 
-      ws.onclose = () => {
-        console.log("WebSocket closed.");
+      ws.onclose = (event) => {
+        console.log(`WebSocket closed. Code: ${event.code}, Reason: ${event.reason}`);
         disconnect();
       };
 
