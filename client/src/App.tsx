@@ -580,8 +580,10 @@ export default function App() {
     } else {
       setMutePlayback(true);
       addLog("system", "Auto-connecting session to send message...");
-      await connect(textToSend, false); // Connect with startMic = false
+      await connect(textToSend, false);
     }
+  };
+
   const runSelfCheck = async () => {
     setShowMenu(false);
     addLog("system", "Starting integration self-diagnostics check...");
