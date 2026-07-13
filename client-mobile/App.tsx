@@ -81,6 +81,10 @@ export default function App() {
         domStorageEnabled={true}
         javaScriptEnabled={true}
         
+        // Disable viewport scrolling and adjust for keyboard to prevent layout shift
+        scrollEnabled={false}
+        automaticallyAdjustKeyboardInsets={true}
+        
         // Console forwarding bridge
         injectedJavaScript={`
           (function() {
