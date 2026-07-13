@@ -183,7 +183,7 @@ When you decide to call a tool (like list_events, create_event, list_calendars, 
 
     const setupMessage = {
       setup: {
-        model: "models/gemini-3.1-flash-live-preview",
+        model: "models/gemini-2.0-flash-exp",
         generationConfig: {
           responseModalities: ["AUDIO"],
           speechConfig: {
