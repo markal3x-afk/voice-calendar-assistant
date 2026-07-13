@@ -10,7 +10,7 @@
     "client": "npm run --prefix client dev",
     "install:all": "npm install && npm install --prefix client",
     "build": "npm install --production=false --prefix client && npm run build --prefix client",
-    "test": "node server/test-tool-runner.js && node server/test-connection.js",
+    "test": "node server/test-tool-runner.js && node server/test-auth.js && node server/test-connection.js",
     "dev": "concurrently \"npm run server\" \"npm run client\""
   },
   "dependencies": {
