@@ -14,6 +14,7 @@ dotenv.config();
 
 const PORT = process.env.PORT || 3000;
 const app = express();
+app.set("trust proxy", true); // Trust DigitalOcean's load balancer to resolve req.protocol to https
 
 // Select HTTP or HTTPS based on local self-signed dev certificates
 const keyPath = path.resolve(process.cwd(), "server.key");
