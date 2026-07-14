@@ -356,7 +356,6 @@ Before calling a tool, say a brief transition like "Let me check..." then execut
       }
       else if (clientMsg.type === "text" && clientMsg.text) {
         console.log(`[PERF] T1 text input received from client at ${new Date().toISOString()}`);
-      } 
         const textFrame = {
           clientContent: {
             turns: [
