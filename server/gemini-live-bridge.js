@@ -191,7 +191,7 @@ Before calling a tool, say a brief transition like "Let me check..." then execut
 
     const setupMessage = {
       setup: {
-        model: "models/gemini-3.1-flash-live-preview",
+        model: "models/gemini-2.0-flash-exp",
         generationConfig: {
           responseModalities: ["AUDIO"],
           speechConfig: {

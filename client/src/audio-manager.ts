@@ -51,12 +51,7 @@ export class AudioManager {
 
   private pcmAccumulator: number[] = [];
 
-  // Voice Activity Detection (VAD) properties for echo/static suppression
-  private silenceCounter = 0;
-  private trailingSilencePackets = 0; // Bounded silence flush counter
-  private readonly HANGOVER_FRAMES = 25; // ~200ms at typical chunk rates (128-sample blocks)
-  private readonly MIN_VOLUME_THRESHOLD = 0.0015; // RMS amplitude threshold for noise gate (backed off for sensitivity)
-  private readonly MAX_TRAILING_SILENCE = 3; // Send up to 3 silence packets (300ms) after speech ends
+
 
   constructor(onAudioChunk: (base64Pcm: string) => void) {
     this.onAudioChunkCallback = onAudioChunk;
@@ -117,53 +112,9 @@ export class AudioManager {
   private handleIncomingMicData(floatData: Float32Array) {
     if (!this.resampler || !this.onAudioChunkCallback) return;
 
-    // 1. Calculate Root Mean Square (RMS) volume of the raw microphone float buffer
-    let sumSquares = 0;
-    for (let i = 0; i < floatData.length; i++) {
-      sumSquares += floatData[i] * floatData[i];
-    }
-    const rms = Math.sqrt(sumSquares / floatData.length);
-
-    // 2. Evaluate if volume is above our threshold (active speaking)
-    if (rms > this.MIN_VOLUME_THRESHOLD) {
-      this.silenceCounter = this.HANGOVER_FRAMES; // Reset/Keep speaking hangover open
-      this.trailingSilencePackets = 0; // Reset trailing silence counter on new speech
-    } else {
-      if (this.silenceCounter > 0) {
-        this.silenceCounter--; // Count down hangover frames to allow sentence endings
-      }
-    }
-
-    // 3. Bounded silence flush: after the hangover expires, send a few trailing silence
-    // packets so Gemini can finalize the turn, then stop transmitting.
-    // This avoids both the "infinite silence stream" hang and the "full stop cold-start" penalty.
-    if (this.silenceCounter === 0) {
-      if (this.trailingSilencePackets < this.MAX_TRAILING_SILENCE) {
-        // Flush any residual accumulator data first, then send clean silence
-        if (this.pcmAccumulator.length > 0) {
-          while (this.pcmAccumulator.length < 1600) {
-            this.pcmAccumulator.push(0);
-          }
-          const chunk = new Int16Array(this.pcmAccumulator);
-          const base64 = this.int16ToBase64(chunk);
-          this.onAudioChunkCallback(base64);
-          this.pcmAccumulator = [];
-        } else {
-          // Send a clean 100ms silence packet
-          const silenceChunk = new Int16Array(1600); // Already zeros
-          const base64 = this.int16ToBase64(silenceChunk);
-          this.onAudioChunkCallback(base64);
-        }
-        this.trailingSilencePackets++;
-      }
-      return; // Done transmitting until user speaks again
-    }
-
-    // 4. Speaking/hangover is active — resample the raw float input to 16kHz 16-bit signed PCM
-    const processedData = new Float32Array(floatData.length);
-    processedData.set(floatData);
-
-    const pcm16 = this.resampler.resample(processedData);
+    // Resample the raw float input directly to 16kHz 16-bit signed PCM.
+    // We let Gemini's native server-side VAD handle speech boundaries.
+    const pcm16 = this.resampler.resample(floatData);
     if (pcm16.length === 0) return;
 
     // Accumulate samples in memory
