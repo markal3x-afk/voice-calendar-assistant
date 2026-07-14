@@ -273,19 +273,21 @@ export default function App() {
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
+      // Track the timestamp of the last audio chunk sent for latency measurement
+      let lastAudioSentAt = 0;
+
       const audioManager = new AudioManager((base64Pcm) => {
         if (ws.readyState === WebSocket.OPEN) {
-          // Discard microphone data while the model is speaking to prevent local audio output
-          // (speaker echo, breathing, or feedback) from triggering false interruptions.
-          if (isModelSpeakingRef.current) {
-            return;
-          }
           ws.send(JSON.stringify({ type: "audio", data: base64Pcm }));
+          lastAudioSentAt = Date.now();
           setIsUserSpeaking(true);
 
           if (speakingTimeoutRef.current) clearTimeout(speakingTimeoutRef.current);
           speakingTimeoutRef.current = setTimeout(() => {
             setIsUserSpeaking(false);
+            if (lastAudioSentAt > 0) {
+              addLog("system", `[PERF] C1 last audio chunk sent at ${new Date(lastAudioSentAt).toLocaleTimeString()}`);
+            }
           }, 600);
         }
       });
@@ -402,6 +404,12 @@ export default function App() {
 
               if (part.inlineData && part.inlineData.data) {
                 if (!mutePlayback) {
+                  // [PERF] Log first audio chunk received for round-trip latency
+                  if (!isModelSpeakingRef.current && lastAudioSentAt > 0) {
+                    const latency = Date.now() - lastAudioSentAt;
+                    addLog("system", `[PERF] C2 first audio chunk received. C4 round-trip: ${latency}ms`);
+                    lastAudioSentAt = 0; // Reset to avoid duplicate logging
+                  }
                   audioManager.playAudioChunk(part.inlineData.data);
                   setIsModelSpeaking(true);
                 }

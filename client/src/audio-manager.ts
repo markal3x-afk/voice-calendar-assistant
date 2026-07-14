@@ -53,8 +53,10 @@ export class AudioManager {
 
   // Voice Activity Detection (VAD) properties for echo/static suppression
   private silenceCounter = 0;
+  private trailingSilencePackets = 0; // Bounded silence flush counter
   private readonly HANGOVER_FRAMES = 25; // ~200ms at typical chunk rates (128-sample blocks)
   private readonly MIN_VOLUME_THRESHOLD = 0.0015; // RMS amplitude threshold for noise gate (backed off for sensitivity)
+  private readonly MAX_TRAILING_SILENCE = 3; // Send up to 3 silence packets (300ms) after speech ends
 
   constructor(onAudioChunk: (base64Pcm: string) => void) {
     this.onAudioChunkCallback = onAudioChunk;
@@ -125,32 +127,39 @@ export class AudioManager {
     // 2. Evaluate if volume is above our threshold (active speaking)
     if (rms > this.MIN_VOLUME_THRESHOLD) {
       this.silenceCounter = this.HANGOVER_FRAMES; // Reset/Keep speaking hangover open
+      this.trailingSilencePackets = 0; // Reset trailing silence counter on new speech
     } else {
       if (this.silenceCounter > 0) {
         this.silenceCounter--; // Count down hangover frames to allow sentence endings
       }
     }
 
-    // 3. Stop transmission during idle silence to let Gemini finalize the turn.
-    // If the hangover expires (silenceCounter === 0), we check if the accumulator
-    // has any residual data, flush it by padding with zeros, and cease streaming.
+    // 3. Bounded silence flush: after the hangover expires, send a few trailing silence
+    // packets so Gemini can finalize the turn, then stop transmitting.
+    // This avoids both the "infinite silence stream" hang and the "full stop cold-start" penalty.
     if (this.silenceCounter === 0) {
-      if (this.pcmAccumulator.length > 0) {
-        // Pad the remainder space with clean zeros to hit the 1600 threshold
-        while (this.pcmAccumulator.length < 1600) {
-          this.pcmAccumulator.push(0);
+      if (this.trailingSilencePackets < this.MAX_TRAILING_SILENCE) {
+        // Flush any residual accumulator data first, then send clean silence
+        if (this.pcmAccumulator.length > 0) {
+          while (this.pcmAccumulator.length < 1600) {
+            this.pcmAccumulator.push(0);
+          }
+          const chunk = new Int16Array(this.pcmAccumulator);
+          const base64 = this.int16ToBase64(chunk);
+          this.onAudioChunkCallback(base64);
+          this.pcmAccumulator = [];
+        } else {
+          // Send a clean 100ms silence packet
+          const silenceChunk = new Int16Array(1600); // Already zeros
+          const base64 = this.int16ToBase64(silenceChunk);
+          this.onAudioChunkCallback(base64);
         }
-        const chunk = new Int16Array(this.pcmAccumulator);
-        const base64 = this.int16ToBase64(chunk);
-        this.onAudioChunkCallback(base64);
-        this.pcmAccumulator = []; // Clear accumulator
+        this.trailingSilencePackets++;
       }
-      return; // Cease audio packet transmission
+      return; // Done transmitting until user speaks again
     }
 
-    // 4. Speaking/hangover is active. Resample the raw float input to 16kHz 16-bit signed PCM
-    // During the hangover frames, we can inject digital silence (zeros) if the user stops
-    // speaking, but we still resample to keep the stream continuous until the flush.
+    // 4. Speaking/hangover is active — resample the raw float input to 16kHz 16-bit signed PCM
     const processedData = new Float32Array(floatData.length);
     processedData.set(floatData);
 

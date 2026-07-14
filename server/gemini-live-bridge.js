@@ -137,34 +137,29 @@ export async function handleLiveSession(clientWs, request) {
 Use this reference to resolve relative dates (like "tomorrow", "next Thursday", or "July 23rd") when making calendar queries.
 When calling calendar tools, note that the target calendar may be in a different timezone. You MUST convert relative query timestamps (such as timeMin/timeMax) into ISO 8601 strings relative to the calendar's timezone, or use the client timezone offset accordingly.`;
 
-  // 7. Define System Instructions
-  const systemInstruction = `You are a helpful, general-purpose voice-enabled AI assistant.
-You speak naturally, concisely, and with a friendly tone, optimized for real-time fluid voice conversations.
+  // 7. Define System Instructions (trimmed for latency — ~600 tokens)
+  const systemInstruction = `You are a helpful voice-enabled AI assistant. Speak naturally, concisely, and friendly.
 
 ${timeContext}
 
-You have access to a set of Google Calendar and memory tools.
-Always prefer running tools to answer calendar requests or search questions.
+You have access to Google Calendar and memory tools. Always prefer running tools for calendar or search questions.
 
-TIMEZONE & TRAVEL AWARENESS:
-- The user travels frequently. Their current local device timezone is: "${clientTimezone}".
-- However, their calendar events may be scheduled under different native calendar timezones (e.g. America/Los_Angeles, America/New_York).
-- STRICTOR RULES FOR TIMEZONE CONVERSIONS:
-  1. Inspect the ISO 8601 offset strings (e.g., "-04:00" for Eastern, "-07:00" for Pacific, "+01:00" for London) returned by the Google Calendar tool events. Calculate offsets explicitly. Do not assume or guess.
-  2. You MUST always append the timezone name or abbreviation (e.g. Eastern Time, Pacific Time, GMT) when speaking or displaying a time. Never state a raw time like "your meeting is at 2:00 PM" without a zone.
-  3. When presenting list of events, show their start time in the calendar's native timezone and convert it to the user's current local timezone ("${clientTimezone}") if they differ. For example, say: "Your sync is at 3:00 PM Eastern (which will be 12:00 PM in your local Pacific time)."
-  4. If you schedule a new event via tools, explicitly confirm the target timezone with the user first if there is ambiguity, and default to their current local device timezone ("${clientTimezone}") unless specified otherwise.
-  5. STRICT ALIGNMENT FOR TIMELINE COMPARISONS: Before making any relative comparison (e.g., deciding if you will land before/after a match, or if you have time to check in between flights), you MUST convert both event times into a single common timezone (like your current local timezone "${clientTimezone}" or UTC) first. Never compare raw clock numbers from different timezones directly (e.g. comparing 9:50 PM India local time against 12:00 PM Pacific local time is invalid and will lead to incorrect timeline assertions).
-- Clearly specify both timezones in your verbal explanation if they differ, so the user knows exactly when the meeting occurs in both locations.
+TIMEZONE RULES (user timezone: ${clientTimezone}):
+- Calendar events may use different timezones. Read the ISO 8601 offset (e.g. "-07:00", "+08:00") from each event. Calculate conversions explicitly.
+- Always state the timezone when speaking a time (e.g. "3 PM Pacific"). Never say a bare time.
+- If the user's timezone differs from the event's, state both: "3 PM Eastern (12 PM your time)."
+- When comparing two events across timezones (e.g. "will I land before the match?"), convert BOTH to a single timezone first. Never compare raw clock numbers from different zones.
+- Default new events to ${clientTimezone} unless the user specifies otherwise.
 
-Here are the user's saved preferences and memories. You MUST follow them at all times:
+User preferences:
 ${userPrefs}
 
-If the user states a new preference or asks you to forget/change a rule, you MUST use the tool "save_preferences" to save the updated preferences content. First, query "read_preferences" to get the current preferences, make your changes, and call save_preferences.
-Always confirm to the user when you have successfully scheduled an event or updated a memory.
-
-When you decide to call a tool (like list_events, create_event, list_calendars, etc.), you MUST first output a brief verbal transition statement to the user to let them know you are looking it up (e.g., "Let me check that for you...", "Sure thing, let me check your calendar...", or "Give me a second to search that..."). Keep it extremely short, friendly, and natural, then execute the tool.
+Use "save_preferences" / "read_preferences" tools to persist preference changes. Confirm saves to the user.
+Before calling a tool, say a brief transition like "Let me check..." then execute.
 `;
+
+  // Track last token refresh to avoid redundant DB queries on every tool call
+  let lastTokenRefreshTime = Date.now();
 
   // 8. Connect to Gemini Live
   const geminiApiKey = process.env.GEMINI_API_KEY;
@@ -220,12 +215,18 @@ When you decide to call a tool (like list_events, create_event, list_calendars, 
     console.log("Session setup message sent to Gemini Live.");
   });
 
+  // Performance tracking state
+  let firstAudioSentToClient = false;
+
   geminiWs.on("message", async (data) => {
     try {
       const message = JSON.parse(data.toString());
 
       // Check if Gemini is requesting a Tool Call
       if (message.toolCall) {
+        const toolCallStart = Date.now();
+        console.log(`[PERF] T2 toolCall received from Gemini at ${new Date().toISOString()}`);
+
         // Forward the toolCall to client so it can display running status
         try {
           clientWs.send(JSON.stringify(message));
@@ -236,31 +237,39 @@ When you decide to call a tool (like list_events, create_event, list_calendars, 
         const functionCalls = message.toolCall.functionCalls || [];
         const responses = [];
 
-        // Dynamic mid-session token refresh guard:
-        // Query the database for the user's latest tokens and refresh if the 1-hour window expired
-        try {
-          const credRes = await db.query("SELECT * FROM google_credentials WHERE user_id = $1", [user.id]);
-          if (credRes.rows.length > 0) {
-            const freshCreds = credRes.rows[0];
-            const saveCallback = async (updatedFields) => {
-              await db.query(
-                "UPDATE google_credentials SET access_token = $1, expiry_date = $2 WHERE user_id = $3",
-                [updatedFields.access_token, updatedFields.expiry_date, user.id]
-              );
-              console.log(`[Database] Dynamic mid-session token refresh completed for user_id: ${user.id}`);
-            };
-            const freshToken = await getActiveAccessToken(freshCreds, saveCallback);
-            googleClient.accessToken = freshToken; // Update client instance with the refreshed token
+        // Dynamic mid-session token refresh guard (cached — skip if refreshed within last 5 minutes)
+        const tokenRefreshAge = Date.now() - lastTokenRefreshTime;
+        if (tokenRefreshAge > 5 * 60 * 1000) {
+          const tokenRefreshStart = Date.now();
+          try {
+            const credRes = await db.query("SELECT * FROM google_credentials WHERE user_id = $1", [user.id]);
+            if (credRes.rows.length > 0) {
+              const freshCreds = credRes.rows[0];
+              const saveCallback = async (updatedFields) => {
+                await db.query(
+                  "UPDATE google_credentials SET access_token = $1, expiry_date = $2 WHERE user_id = $3",
+                  [updatedFields.access_token, updatedFields.expiry_date, user.id]
+                );
+                console.log(`[Database] Dynamic mid-session token refresh completed for user_id: ${user.id}`);
+              };
+              const freshToken = await getActiveAccessToken(freshCreds, saveCallback);
+              googleClient.accessToken = freshToken;
+            }
+            lastTokenRefreshTime = Date.now();
+          } catch (tokenErr) {
+            console.warn("[Session Tool Execution] Non-fatal token validation error:", tokenErr.message);
           }
-        } catch (tokenErr) {
-          console.warn("[Session Tool Execution] Non-fatal token validation error:", tokenErr.message);
+          console.log(`[PERF] Token refresh check took ${Date.now() - tokenRefreshStart}ms`);
+        } else {
+          console.log(`[PERF] Token refresh skipped (last refresh ${Math.round(tokenRefreshAge / 1000)}s ago)`);
         }
 
         for (const call of functionCalls) {
           const { id, name, args } = call;
+          const toolExecStart = Date.now();
           try {
-            // Execute the tool call via our user-specific Tool Runner
             const result = await executeUserTool(name, args, googleClient, user.id);
+            console.log(`[PERF] T3 tool [${name}] executed in ${Date.now() - toolExecStart}ms`);
             responses.push({
               id,
               name,
@@ -268,6 +277,7 @@ When you decide to call a tool (like list_events, create_event, list_calendars, 
             });
           } catch (err) {
             console.error(`Error executing user tool [${name}]:`, err);
+            console.log(`[PERF] T3 tool [${name}] FAILED in ${Date.now() - toolExecStart}ms`);
             responses.push({
               id,
               name,
@@ -284,7 +294,7 @@ When you decide to call a tool (like list_events, create_event, list_calendars, 
             }
           };
           geminiWs.send(JSON.stringify(toolResponse));
-          console.log("Sent toolResponse back to Gemini Live.");
+          console.log(`[PERF] T4 toolResponse sent back to Gemini. Total tool pipeline: ${Date.now() - toolCallStart}ms`);
 
           // Forward the toolResponse payload to the client so it can parse returned events
           try {
@@ -296,6 +306,17 @@ When you decide to call a tool (like list_events, create_event, list_calendars, 
       } 
       // Forward general stream content (audio base64, text, status updates) to client
       else {
+        // Track first audio chunk for latency measurement
+        if (!firstAudioSentToClient && message.serverContent?.modelTurn?.parts) {
+          const hasAudio = message.serverContent.modelTurn.parts.some(p => p.inlineData);
+          if (hasAudio) {
+            console.log(`[PERF] T5 first model audio chunk forwarded to client at ${new Date().toISOString()}`);
+            firstAudioSentToClient = true;
+          }
+        }
+        if (message.serverContent?.turnComplete) {
+          firstAudioSentToClient = false; // Reset for next turn
+        }
         clientWs.send(JSON.stringify(message));
       }
     } catch (err) {
@@ -332,8 +353,10 @@ When you decide to call a tool (like list_events, create_event, list_calendars, 
           }
         };
         geminiWs.send(JSON.stringify(inputFrame));
-      } 
+      }
       else if (clientMsg.type === "text" && clientMsg.text) {
+        console.log(`[PERF] T1 text input received from client at ${new Date().toISOString()}`);
+      } 
         const textFrame = {
           clientContent: {
             turns: [
