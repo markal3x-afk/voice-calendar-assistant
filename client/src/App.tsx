@@ -293,46 +293,14 @@ export default function App() {
       });
       audioManagerRef.current = audioManager;
 
-      ws.onopen = async () => {
-        console.log("WebSocket connected to gateway.");
+      // Start recording immediately inside the click gesture to satisfy WebKit/Safari security policy
+      if (startMic) {
         try {
-          if (startMic) {
-            await audioManager.startRecording();
-            setIsMicActive(true);
-            setMutePlayback(false);
-            addLog("system", "Session established. Speak now!");
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: Math.random().toString(36).substr(2, 9),
-                sender: "system",
-                text: "🎤 Assistant is listening. Speak to chat!",
-                timestamp: new Date()
-              }
-            ]);
-          } else {
-            setIsMicActive(false);
-            setMutePlayback(true);
-            addLog("system", "Text session established.");
-            setMessages((prev) => [
-              ...prev,
-              {
-                id: Math.random().toString(36).substr(2, 9),
-                sender: "system",
-                text: "💬 Connected in text mode. Type below!",
-                timestamp: new Date()
-              }
-            ]);
-          }
-          setIsConnected(true);
-          setIsConnecting(false);
-          setStatusMessage("Live Connection Active");
-
-          if (pendingText) {
-            ws.send(JSON.stringify({ type: "text", text: pendingText }));
-          }
+          await audioManager.startRecording();
+          setIsMicActive(true);
+          setMutePlayback(false);
         } catch (err) {
-          console.error("Microphone capture failed:", err);
+          console.error("Microphone capture failed during click gesture:", err);
           addLog("system", "Mic capture failed. Please check permissions.");
           setMessages((prev) => [
             ...prev,
@@ -343,7 +311,46 @@ export default function App() {
               timestamp: new Date()
             }
           ]);
-          disconnect();
+          ws.close();
+          setIsConnecting(false);
+          setStatusMessage("Disconnected");
+          return;
+        }
+      }
+
+      ws.onopen = async () => {
+        console.log("WebSocket connected to gateway.");
+        if (startMic) {
+          addLog("system", "Session established. Speak now!");
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Math.random().toString(36).substr(2, 9),
+              sender: "system",
+              text: "🎤 Assistant is listening. Speak to chat!",
+              timestamp: new Date()
+            }
+          ]);
+        } else {
+          setIsMicActive(false);
+          setMutePlayback(true);
+          addLog("system", "Text session established.");
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: Math.random().toString(36).substr(2, 9),
+              sender: "system",
+              text: "💬 Connected in text mode. Type below!",
+              timestamp: new Date()
+            }
+          ]);
+        }
+        setIsConnected(true);
+        setIsConnecting(false);
+        setStatusMessage("Live Connection Active");
+
+        if (pendingText) {
+          ws.send(JSON.stringify({ type: "text", text: pendingText }));
         }
       };
 
