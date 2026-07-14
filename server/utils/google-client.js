@@ -94,7 +94,19 @@ export class GoogleCalendarClient {
   }
   
   async listCalendars() {
-    return this._request("/users/me/calendarList");
+    // Per-session cache: the client is constructed once per WebSocket session, and a
+    // user's calendar list rarely changes mid-conversation. This removes a serial Google
+    // round-trip that otherwise ran before every "primary" list_events fan-out.
+    const CALENDAR_LIST_TTL_MS = 5 * 60 * 1000;
+    if (this._calendarListCache && Date.now() - this._calendarListCacheTime < CALENDAR_LIST_TTL_MS) {
+      console.log("[PERF] calendar list served from session cache");
+      return this._calendarListCache;
+    }
+    console.log("[PERF] calendar list fetched from Google (cache miss)");
+    const result = await this._request("/users/me/calendarList");
+    this._calendarListCache = result;
+    this._calendarListCacheTime = Date.now();
+    return result;
   }
   
   async listEvents(calendarId, params = {}) {

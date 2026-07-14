@@ -96,9 +96,20 @@ router.post("/unlink", async (req, res) => {
 
 // Helper to construct callback redirect URI
 const getRedirectUri = (req) => {
+  // In production (behind a load balancer), derive from the request
+  // In local dev, the Vite proxy rewrites the Host header so we fall back
+  // to http://localhost:<vite-port> which Google allows for localhost OAuth
   const host = req.get("host");
   const protocol = req.protocol;
-  return `${protocol}://${host}/api/auth/google/callback`;
+  const uri = `${protocol}://${host}/api/auth/google/callback`;
+
+  // If running locally with a self-signed cert, Google rejects https://localhost
+  // Redirect through the Vite dev proxy instead (http://localhost:5173)
+  if (host?.startsWith("localhost") && protocol === "https" && !process.env.DATABASE_URL) {
+    return `http://localhost:5173/api/auth/google/callback`;
+  }
+
+  return uri;
 };
 
 /**
@@ -199,12 +210,12 @@ router.get("/google/callback", async (req, res) => {
     console.log(`Successfully authenticated user: ${email}`);
 
     // Set cookie to identify user sessions across WebViews and WebSocket gateway requests
-    res.cookie("email", email, { 
+    res.cookie("email", email, {
       maxAge: 365 * 24 * 60 * 60 * 1000, // 1 year
       httpOnly: false,                   // Let frontend read if needed
       path: "/",
       sameSite: "lax",
-      secure: true                       // DigitalOcean terminates SSL with HTTPS
+      secure: !!process.env.DATABASE_URL // Only require HTTPS cookies in production
     });
 
     // 3. Upsert user in 'users' table

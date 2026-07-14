@@ -7,9 +7,11 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        // Backend runs HTTPS locally (self-signed dev cert); secure:false accepts it
+        target: 'https://localhost:3000',
         changeOrigin: true,
-        ws: true
+        ws: true,
+        secure: false
       }
     }
   }

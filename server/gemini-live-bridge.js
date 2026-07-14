@@ -171,6 +171,34 @@ Before calling a tool, say a brief transition like "Let me check..." then execut
   const url = `${GEMINI_LIVE_URL}?key=${geminiApiKey}`;
   const geminiWs = new WebSocket(url);
 
+  // Gemini does not accept input frames until it acknowledges setup with `setupComplete`.
+  // Buffer any client frames (audio/text) that arrive before then instead of dropping them,
+  // so the first utterance right after connect isn't silently lost (cold-start race).
+  let geminiReady = false;
+  const pendingClientFrames = [];
+  const MAX_PENDING_FRAMES = 500; // ~50s of 100ms audio; guards against unbounded growth
+
+  const sendToGemini = (frame) => {
+    if (geminiReady && geminiWs.readyState === WebSocket.OPEN) {
+      geminiWs.send(JSON.stringify(frame));
+    } else if (pendingClientFrames.length < MAX_PENDING_FRAMES) {
+      pendingClientFrames.push(frame);
+    }
+  };
+
+  const flushPendingClientFrames = () => {
+    if (pendingClientFrames.length === 0) return;
+    console.log(`[Bridge] Gemini ready — flushing ${pendingClientFrames.length} buffered client frame(s).`);
+    for (const frame of pendingClientFrames) {
+      try {
+        geminiWs.send(JSON.stringify(frame));
+      } catch (e) {
+        console.error("Failed to flush buffered client frame:", e);
+      }
+    }
+    pendingClientFrames.length = 0;
+  };
+
   // Fetch the list of function definitions from MCP Manager
   let mcpTools = [];
   try {
@@ -191,7 +219,7 @@ Before calling a tool, say a brief transition like "Let me check..." then execut
 
     const setupMessage = {
       setup: {
-        model: "models/gemini-2.0-flash-exp",
+        model: "models/gemini-3.1-flash-live-preview",
         generationConfig: {
           responseModalities: ["AUDIO"],
           speechConfig: {
@@ -221,6 +249,12 @@ Before calling a tool, say a brief transition like "Let me check..." then execut
   geminiWs.on("message", async (data) => {
     try {
       const message = JSON.parse(data.toString());
+
+      // Gemini signals readiness with `setupComplete` — release any buffered client frames.
+      if (message.setupComplete) {
+        geminiReady = true;
+        flushPendingClientFrames();
+      }
 
       // Check if Gemini is requesting a Tool Call
       if (message.toolCall) {
@@ -336,27 +370,23 @@ Before calling a tool, say a brief transition like "Let me check..." then execut
 
   // Listen to messages from the iOS client
   clientWs.on("message", (data) => {
-    if (geminiWs.readyState !== WebSocket.OPEN) {
-      return;
-    }
-
     try {
       const clientMsg = JSON.parse(data.toString());
 
       if (clientMsg.type === "audio" && clientMsg.data) {
-        const inputFrame = {
+        // Routed through sendToGemini so pre-`setupComplete` frames are buffered, not dropped.
+        sendToGemini({
           realtimeInput: {
             audio: {
               mimeType: "audio/pcm;rate=16000",
               data: clientMsg.data
             }
           }
-        };
-        geminiWs.send(JSON.stringify(inputFrame));
+        });
       }
       else if (clientMsg.type === "text" && clientMsg.text) {
         console.log(`[PERF] T1 text input received from client at ${new Date().toISOString()}`);
-        const textFrame = {
+        sendToGemini({
           clientContent: {
             turns: [
               {
@@ -368,8 +398,7 @@ Before calling a tool, say a brief transition like "Let me check..." then execut
             ],
             turnComplete: true
           }
-        };
-        geminiWs.send(JSON.stringify(textFrame));
+        });
       }
     } catch (err) {
       console.error("Error parsing message from client:", err);

@@ -10,6 +10,11 @@ yarn-error.log*
 *.cert
 *.pem
 server/data/preferences_*.md
+# Local fallback DB — holds encrypted OAuth tokens; must never be pushed
+server/data/db_fallback.json
+
+# Local tooling
+.claude/settings.local.json
 
 # OS files
 .DS_Store
